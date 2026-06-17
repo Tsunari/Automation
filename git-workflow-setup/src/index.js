@@ -6,7 +6,8 @@ import * as p from '@clack/prompts'
 import {
   detectLanguages,
   detectPackageManager,
-  detectExistingConfigs
+  detectExistingConfigs,
+  detectBuildStep
 } from './detector.js'
 import {
   updatePackageJson,
@@ -63,11 +64,11 @@ async function run() {
   const selectedLanguages = await p.multiselect({
     message: 'Select project languages (detected selections highlighted):',
     options: [
-      { value: 'javascript', label: 'JavaScript / TypeScript', hint: 'Prettier, ESLint, TSC checks' },
-      { value: 'python', label: 'Python', hint: 'Black formatter checks' },
-      { value: 'go', label: 'Go', hint: 'Gofmt, Go Vet checks' },
-      { value: 'rust', label: 'Rust', hint: 'Cargo Fmt, Cargo Clippy checks' },
-      { value: 'general', label: 'General Project (Markdown/JSON)', hint: 'Prettier checks' },
+      { value: 'javascript', label: 'JavaScript / TypeScript' },
+      { value: 'python', label: 'Python' },
+      { value: 'go', label: 'Go' },
+      { value: 'rust', label: 'Rust' },
+      { value: 'general', label: 'General Project (Markdown/JSON)' },
     ],
     required: true,
     initialValues: detectedLanguages,
@@ -137,11 +138,11 @@ async function run() {
   }
 
   const hasBuildStep = initialReleaseConfig.buildStep !== undefined
-  const defaultBuildStep = selectedLanguages.includes('javascript') ? 'pnpm run build' : null
+  const detectedBuildStep = detectBuildStep(targetPath, pm, selectedLanguages)
   const buildStepInput = await p.text({
     message: 'Command to execute for build validation (press Enter to skip):',
     placeholder: 'e.g. pnpm run build',
-    initialValue: hasBuildStep ? (initialReleaseConfig.buildStep || '') : (defaultBuildStep || ''),
+    initialValue: hasBuildStep ? (initialReleaseConfig.buildStep || '') : (detectedBuildStep || ''),
   })
 
   if (p.isCancel(buildStepInput)) {

@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { detectLanguages, detectPackageManager, detectExistingConfigs } from '../src/detector.js'
+import { detectLanguages, detectPackageManager, detectExistingConfigs, detectBuildStep } from '../src/detector.js'
 import { updatePackageJson, writeConfigurations } from '../src/writer.js'
 
 const tempTestDir = path.resolve(os.homedir(), '.gemini/antigravity-ide/scratch/test-project-mock')
@@ -46,6 +46,20 @@ try {
 
   const pm = detectPackageManager(tempTestDir)
   assert(pm === 'pnpm', 'Should detect pnpm package manager from lockfile.')
+
+  // Test build step detection
+  const buildStepNoPkg = detectBuildStep(tempTestDir, 'pnpm', langs)
+  assert(buildStepNoPkg === 'go build', 'Should suggest go build when go.mod is present and package.json is missing.')
+
+  // Write a dummy package.json with a build script to test JS build step detection
+  fs.writeFileSync(path.join(tempTestDir, 'package.json'), JSON.stringify({
+    scripts: {
+      build: 'vite build'
+    }
+  }), 'utf8')
+  const buildStepPkg = detectBuildStep(tempTestDir, 'pnpm', langs)
+  assert(buildStepPkg === 'pnpm run build', 'Should suggest package manager script when build script is defined in package.json.')
+  fs.unlinkSync(path.join(tempTestDir, 'package.json')) // Clean up package.json
 
   // 4. Test Configuration Writing (Initial run)
   const defaultReleaseConfig = {

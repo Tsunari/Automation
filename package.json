@@ -8,10 +8,11 @@
     "git-workflow-setup": "./git-workflow-setup/src/index.js"
   },
   "scripts": {
-    "test": "node git-workflow-setup/test/setup.test.js"
+    "test": "node git-workflow-setup/test/setup.test.js",
+    "build": "node scripts/generate-version.js"
   },
   "license": "GPL-3.0-only",
-  "dependencies": {
+  "devDependencies": {
     "@clack/prompts": "^1.5.1"
   }
 }

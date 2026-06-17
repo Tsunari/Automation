@@ -45,9 +45,13 @@ export function updatePackageJson(projectPath, packageManager, releaseConfig) {
   pkg.scripts.prepare = 'husky'
   
   if (releaseConfig.generateVersionJson) {
-    pkg.scripts.build = pkg.scripts.build 
-      ? (pkg.scripts.build.includes('generate-version.js') ? pkg.scripts.build : `node scripts/generate-version.js && ${pkg.scripts.build}`)
-      : 'node scripts/generate-version.js && tsc -b && vite build'
+    if (pkg.scripts.build) {
+      if (!pkg.scripts.build.includes('generate-version.js')) {
+        pkg.scripts.build = `node scripts/generate-version.js && ${pkg.scripts.build}`
+      }
+    } else {
+      pkg.scripts.build = 'node scripts/generate-version.js'
+    }
   }
 
   // 2. Add empty devDependencies block if missing

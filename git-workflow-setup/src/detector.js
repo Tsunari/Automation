@@ -96,3 +96,41 @@ export function detectExistingConfigs(projectPath) {
 
   return configs
 }
+
+/**
+ * Intelligently detects the build step for the workspace.
+ * @param {string} projectPath 
+ * @param {string} packageManager 
+ * @param {string[]} languages 
+ * @returns {string | null} Suggested build step or null
+ */
+export function detectBuildStep(projectPath, packageManager, languages) {
+  // Check package.json for build scripts if JS/TS
+  const pkgPath = path.join(projectPath, 'package.json')
+  if (fs.existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
+      if (pkg.scripts && pkg.scripts.build) {
+        const pm = packageManager || 'pnpm'
+        return `${pm} run build`
+      }
+      if (pkg.scripts && pkg.scripts.compile) {
+        const pm = packageManager || 'pnpm'
+        return `${pm} run compile`
+      }
+    } catch (e) {
+      // Ignore JSON parse errors
+    }
+  }
+
+  // Check language spec files
+  if (languages.includes('rust') && fs.existsSync(path.join(projectPath, 'Cargo.toml'))) {
+    return 'cargo build'
+  }
+  if (languages.includes('go') && fs.existsSync(path.join(projectPath, 'go.mod'))) {
+    return 'go build'
+  }
+
+  return null
+}
+
