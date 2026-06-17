@@ -11,9 +11,24 @@ import {
 } from './detector.js'
 import { updatePackageJson, writeConfigurations, installDependencies } from './writer.js'
 
-const pkgPath = new URL('../package.json', import.meta.url)
-const cliPkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
-const cliVersion = cliPkg.version
+let cliVersion = '1.0.0'
+try {
+  const rootPkgPath = new URL('../../package.json', import.meta.url)
+  const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, 'utf8'))
+  if (rootPkg && rootPkg.name === 'automation') {
+    cliVersion = rootPkg.version
+  } else {
+    const pkgPath = new URL('../package.json', import.meta.url)
+    const cliPkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
+    cliVersion = cliPkg.version
+  }
+} catch (e) {
+  try {
+    const pkgPath = new URL('../package.json', import.meta.url)
+    const cliPkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
+    cliVersion = cliPkg.version
+  } catch (err) {}
+}
 
 const colors = {
   reset: '\x1b[0m',

@@ -1,6 +1,6 @@
 {
   "name": "automation",
-  "version": "1.0.2",
+  "version": "1.0.0",
   "description": "Private workspace monorepo containing multiple automated development and pipeline scripting utilities.",
   "type": "module",
   "private": true,
