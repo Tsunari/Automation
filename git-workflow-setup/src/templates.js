@@ -8,7 +8,7 @@ export function getCommitlintTemplate() {
     "header-max-length": [0, "always"],
     "body-max-line-length": [0, "always"]
   }
-}`;
+}`
 }
 
 /**
@@ -20,77 +20,69 @@ export function getPrettierTemplate() {
   "singleQuote": true,
   "trailingComma": "all",
   "printWidth": 100
-}`;
+}`
 }
 
 /**
  * Generates husky commit-msg hook script.
  */
 export function getHuskyCommitMsg(packageManager) {
-  const runner = packageManager === 'npm' ? 'npx' : `${packageManager} exec`;
-  return `#!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
-
-${runner} commitlint --edit "$1"
-`;
+  const runner = packageManager === 'npm' ? 'npx' : `${packageManager} exec`
+  return `${runner} commitlint --edit "$1"`
 }
 
 /**
  * Generates husky pre-commit hook script.
  */
 export function getHuskyPreCommit(packageManager) {
-  const runner = packageManager === 'npm' ? 'npx' : `${packageManager} exec`;
-  return `#!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
-
-${runner} lint-staged
-`;
+  const runner = packageManager === 'npm' ? 'npx' : `${packageManager} exec`
+  return `${runner} lint-staged`
 }
 
 /**
  * Generates lint-staged configuration mapping custom formatters per detected language.
- * @param {string[]} languages 
+ * @param {string[]} languages
  */
 export function getLintStagedTemplate(languages) {
-  const rules = [];
+  const rules = []
 
   if (languages.includes('javascript') || languages.includes('general')) {
-    rules.push("  '*.{js,jsx,ts,tsx,json,css,html,md}': ['prettier --write']");
+    rules.push("  '*.{js,jsx,ts,tsx,json,css,html,md}': ['prettier --write']")
   } else {
     // If not a JS/TS project, still format markdown and json using prettier
-    rules.push("  '*.{json,md,yml,yaml}': ['prettier --write']");
+    rules.push("  '*.{json,md,yml,yaml}': ['prettier --write']")
   }
 
   if (languages.includes('python')) {
-    rules.push("  '*.py': ['black']");
+    rules.push("  '*.py': ['black']")
   }
 
   if (languages.includes('go')) {
-    rules.push("  '*.go': ['gofmt -w', 'go vet']");
+    rules.push("  '*.go': ['gofmt -w', 'go vet']")
   }
 
   if (languages.includes('rust')) {
-    rules.push("  '*.rs': ['rustfmt']");
+    rules.push("  '*.rs': ['rustfmt']")
   }
 
   // Typecheck script rule if TS compiler is configured
   if (languages.includes('javascript')) {
-    rules.push("  '**/*.{ts,tsx}': () => 'tsc --noEmit'");
+    rules.push("  '**/*.{ts,tsx}': () => 'tsc --noEmit'")
   }
 
   return `export default {
 ${rules.join(',\n')}
 }
-`;
+`
 }
 
 /**
  * Generates the release configuration template.
  */
 export function getReleaseConfigTemplate(pm, lang) {
-  const hasBuild = lang.includes('javascript') ? 'npm run build' : null;
-  const source = lang.includes('javascript') ? 'package.json' : 'version.json';
-  
+  const hasBuild = lang.includes('javascript') ? 'npm run build' : null
+  const source = lang.includes('javascript') ? 'package.json' : 'version.json'
+
   return `{
   "versionSource": "${source}",
   "changelogPath": "CHANGELOG.md",
@@ -99,7 +91,7 @@ export function getReleaseConfigTemplate(pm, lang) {
   "generateVersionJson": ${lang.includes('javascript')},
   "versionJsonPath": "public/version.json",
   "buildStep": ${hasBuild ? `"${hasBuild}"` : 'null'}
-}`;
+}`
 }
 
 /**
@@ -156,7 +148,7 @@ try {
   console.error('Failed to generate version info:', error)
   process.exit(1)
 }
-`;
+`
 }
 
 /**
@@ -723,5 +715,5 @@ run().catch((e) => {
   p.log.error(\`Process crashed: \${e.message}\`)
   process.exit(1)
 })
-`;
+`
 }
