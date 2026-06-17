@@ -8,8 +8,6 @@
 - doubled changelog generation ([fc25450](https://github.com/Tsunari/Automation/commit/fc25450))
 - **git-workflow-setup**: early abort release script if git tag already exists ([b6958e9](https://github.com/Tsunari/Automation/commit/b6958e9))
 
-# Changelog
-
 ## 1.0.0 (2026-06-17)
 
 ### Features
