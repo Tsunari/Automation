@@ -3,7 +3,7 @@ import path from 'path'
 
 /**
  * Scans the project directory to detect files matching standard language structures.
- * @param {string} projectPath 
+ * @param {string} projectPath
  * @returns {string[]} Detected languages
  */
 export function detectLanguages(projectPath) {
@@ -48,7 +48,7 @@ export function detectLanguages(projectPath) {
 
 /**
  * Scans the project directory for standard lockfiles to determine the package manager.
- * @param {string} projectPath 
+ * @param {string} projectPath
  * @returns {'pnpm' | 'yarn' | 'npm' | null} Detected package manager
  */
 export function detectPackageManager(projectPath) {
@@ -66,7 +66,7 @@ export function detectPackageManager(projectPath) {
 
 /**
  * Scans for existing git-workflow configuration files.
- * @param {string} projectPath 
+ * @param {string} projectPath
  * @returns {object} Maps file names to metadata or parsed configs
  */
 export function detectExistingConfigs(projectPath) {
@@ -99,9 +99,9 @@ export function detectExistingConfigs(projectPath) {
 
 /**
  * Intelligently detects the build step for the workspace.
- * @param {string} projectPath 
- * @param {string} packageManager 
- * @param {string[]} languages 
+ * @param {string} projectPath
+ * @param {string} packageManager
+ * @param {string[]} languages
  * @returns {string | null} Suggested build step or null
  */
 export function detectBuildStep(projectPath, packageManager, languages) {
@@ -134,3 +134,61 @@ export function detectBuildStep(projectPath, packageManager, languages) {
   return null
 }
 
+/**
+ * Scans subdirectories for package structures (package.json, go.mod, Cargo.toml) to pre-populate monorepo projects.
+ * @param {string} projectPath
+ * @returns {object[]} Pre-populated project configuration blocks
+ */
+export function scanSubProjects(projectPath) {
+  const projects = []
+
+  // 1. Add the root project itself
+  const hasRootPackageJson = fs.existsSync(path.join(projectPath, 'package.json'))
+  projects.push({
+    name: 'automation',
+    path: '.',
+    versionSource: hasRootPackageJson ? 'package.json' : 'version.json',
+    changelogPath: 'CHANGELOG.md',
+    generateVersionJson: hasRootPackageJson,
+    versionJsonPath: 'public/version.json',
+    buildStep: hasRootPackageJson ? 'pnpm run build' : null,
+    workflowVersion: '1.0.0',
+  })
+
+  // 2. Scan sub-directories
+  try {
+    const entries = fs.readdirSync(projectPath, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const name = entry.name
+        if (
+          name.startsWith('.') ||
+          name === 'node_modules' ||
+          name === 'public' ||
+          name === 'scripts'
+        ) {
+          continue
+        }
+
+        const subDirPath = path.join(projectPath, name)
+        const hasPkgJson = fs.existsSync(path.join(subDirPath, 'package.json'))
+        const hasGoMod = fs.existsSync(path.join(subDirPath, 'go.mod'))
+        const hasCargo = fs.existsSync(path.join(subDirPath, 'Cargo.toml'))
+
+        if (hasPkgJson || hasGoMod || hasCargo) {
+          projects.push({
+            name,
+            path: name,
+            versionSource: hasPkgJson ? `${name}/package.json` : `${name}/version.json`,
+            changelogPath: `${name}/CHANGELOG.md`,
+            generateVersionJson: false,
+          })
+        }
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  return projects
+}

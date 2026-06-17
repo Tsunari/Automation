@@ -1,7 +1,13 @@
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { detectLanguages, detectPackageManager, detectExistingConfigs, detectBuildStep } from '../src/detector.js'
+import {
+  detectLanguages,
+  detectPackageManager,
+  detectExistingConfigs,
+  detectBuildStep,
+  scanSubProjects,
+} from '../src/detector.js'
 import { updatePackageJson, writeConfigurations } from '../src/writer.js'
 
 const tempTestDir = path.resolve(os.homedir(), '.gemini/antigravity-ide/scratch/test-project-mock')
@@ -14,7 +20,9 @@ const colors = {
   cyan: '\x1b[36m',
 }
 
-console.log(`${colors.bright}${colors.cyan}Running automated setup test verification...${colors.reset}\n`)
+console.log(
+  `${colors.bright}${colors.cyan}Running automated setup test verification...${colors.reset}\n`,
+)
 
 function assert(condition, message) {
   if (!condition) {
@@ -49,16 +57,26 @@ try {
 
   // Test build step detection
   const buildStepNoPkg = detectBuildStep(tempTestDir, 'pnpm', langs)
-  assert(buildStepNoPkg === 'go build', 'Should suggest go build when go.mod is present and package.json is missing.')
+  assert(
+    buildStepNoPkg === 'go build',
+    'Should suggest go build when go.mod is present and package.json is missing.',
+  )
 
   // Write a dummy package.json with a build script to test JS build step detection
-  fs.writeFileSync(path.join(tempTestDir, 'package.json'), JSON.stringify({
-    scripts: {
-      build: 'vite build'
-    }
-  }), 'utf8')
+  fs.writeFileSync(
+    path.join(tempTestDir, 'package.json'),
+    JSON.stringify({
+      scripts: {
+        build: 'vite build',
+      },
+    }),
+    'utf8',
+  )
   const buildStepPkg = detectBuildStep(tempTestDir, 'pnpm', langs)
-  assert(buildStepPkg === 'pnpm run build', 'Should suggest package manager script when build script is defined in package.json.')
+  assert(
+    buildStepPkg === 'pnpm run build',
+    'Should suggest package manager script when build script is defined in package.json.',
+  )
   fs.unlinkSync(path.join(tempTestDir, 'package.json')) // Clean up package.json
 
   // 4. Test Configuration Writing (Initial run)
@@ -69,22 +87,40 @@ try {
     githubRelease: true,
     generateVersionJson: true,
     versionJsonPath: 'public/version.json',
-    buildStep: 'pnpm run build'
+    buildStep: 'pnpm run build',
   }
 
   updatePackageJson(tempTestDir, 'pnpm', defaultReleaseConfig)
   writeConfigurations(tempTestDir, 'pnpm', langs, defaultReleaseConfig)
 
   // Verify created files
-  assert(fs.existsSync(path.join(tempTestDir, '.commitlintrc.json')), 'Should write commitlint configurations.')
-  assert(fs.existsSync(path.join(tempTestDir, 'lint-staged.config.js')), 'Should write lint-staged script mapping.')
-  assert(fs.existsSync(path.join(tempTestDir, 'release.config.json')), 'Should write release config file.')
-  assert(fs.existsSync(path.join(tempTestDir, 'scripts/release.js')), 'Should write release runner script.')
-  assert(fs.existsSync(path.join(tempTestDir, '.husky/commit-msg')), 'Should write husky commit-msg hook.')
+  assert(
+    fs.existsSync(path.join(tempTestDir, '.commitlintrc.json')),
+    'Should write commitlint configurations.',
+  )
+  assert(
+    fs.existsSync(path.join(tempTestDir, 'lint-staged.config.js')),
+    'Should write lint-staged script mapping.',
+  )
+  assert(
+    fs.existsSync(path.join(tempTestDir, 'release.config.json')),
+    'Should write release config file.',
+  )
+  assert(
+    fs.existsSync(path.join(tempTestDir, 'scripts/release.js')),
+    'Should write release runner script.',
+  )
+  assert(
+    fs.existsSync(path.join(tempTestDir, '.husky/commit-msg')),
+    'Should write husky commit-msg hook.',
+  )
 
   // Verify package.json script additions
   const pkg = JSON.parse(fs.readFileSync(path.join(tempTestDir, 'package.json'), 'utf8'))
-  assert(pkg.scripts.release === 'node scripts/release.js', 'Should write package release script alias.')
+  assert(
+    pkg.scripts.release === 'node scripts/release.js',
+    'Should write package release script alias.',
+  )
   assert(pkg.scripts.prepare === 'husky', 'Should write prepare script command.')
 
   // 5. Test Config Merging (Second run / Re-run with updates)
@@ -94,23 +130,45 @@ try {
   const updatedReleaseConfig = {
     push: false,
     githubRelease: false,
-    buildStep: 'pnpm test'
+    buildStep: 'pnpm test',
   }
 
   writeConfigurations(tempTestDir, 'pnpm', langs, updatedReleaseConfig)
 
   // Verify that the config fields merged modularly rather than wiping
-  const mergedConfig = JSON.parse(fs.readFileSync(path.join(tempTestDir, 'release.config.json'), 'utf8'))
+  const mergedConfig = JSON.parse(
+    fs.readFileSync(path.join(tempTestDir, 'release.config.json'), 'utf8'),
+  )
   assert(mergedConfig.push === false, 'Should update modified boolean toggles.')
   assert(mergedConfig.githubRelease === false, 'Should update release parameters.')
   assert(mergedConfig.buildStep === 'pnpm test', 'Should update string build commands.')
-  assert(mergedConfig.versionSource === 'package.json', 'Should preserve original unmodified versionSource.')
-  assert(mergedConfig.changelogPath === 'CHANGELOG.md', 'Should preserve original unmodified filenames.')
+  assert(
+    mergedConfig.versionSource === 'package.json',
+    'Should preserve original unmodified versionSource.',
+  )
+  assert(
+    mergedConfig.changelogPath === 'CHANGELOG.md',
+    'Should preserve original unmodified filenames.',
+  )
+
+  // 6. Test Monorepo project scanning
+  const subProjDir = path.join(tempTestDir, 'my-lib')
+  fs.mkdirSync(subProjDir, { recursive: true })
+  fs.writeFileSync(path.join(subProjDir, 'package.json'), '{}', 'utf8')
+
+  const projectsScanned = scanSubProjects(tempTestDir)
+  assert(projectsScanned.length === 2, 'Should scan and detect 2 projects (root + sub-project).')
+  assert(
+    projectsScanned[1].name === 'my-lib',
+    'Should correctly name the sub-project after its directory name.',
+  )
 
   // Clean up
   fs.rmSync(tempTestDir, { recursive: true, force: true })
 
-  console.log(`\n${colors.bright}${colors.green}All test verifications passed successfully! 🚀${colors.reset}`)
+  console.log(
+    `\n${colors.bright}${colors.green}All test verifications passed successfully! 🚀${colors.reset}`,
+  )
   process.exit(0)
 } catch (error) {
   console.error(`\n${colors.bright}${colors.red}Test suite execution failed:${colors.reset}`, error)

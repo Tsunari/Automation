@@ -8,6 +8,7 @@ import {
   detectPackageManager,
   detectExistingConfigs,
   detectBuildStep,
+  scanSubProjects,
 } from './detector.js'
 import { updatePackageJson, writeConfigurations, installDependencies } from './writer.js'
 
@@ -109,25 +110,48 @@ async function run() {
   }
 
   const isBypass = isRepair || isUpdate
+  const isMonorepo = isBypass
+    ? initialReleaseConfig.projects !== undefined
+    : await p.confirm({
+        message: 'Is this a monorepo workspace containing multiple sub-projects/packages?',
+        initialValue: initialReleaseConfig.projects !== undefined,
+      })
+
+  if (!isBypass && p.isCancel(isMonorepo)) {
+    p.cancel('Setup aborted.')
+    process.exit(0)
+  }
 
   if (isBypass) {
     selectedLanguages = detectedLanguages
     pm = detectedPm || 'pnpm'
-    finalReleaseConfig = {
-      versionSource:
-        initialReleaseConfig.versionSource ||
-        (selectedLanguages.includes('javascript') ? 'package.json' : 'version.json'),
-      changelogPath: initialReleaseConfig.changelogPath || 'CHANGELOG.md',
-      push: initialReleaseConfig.push ?? true,
-      githubRelease: initialReleaseConfig.githubRelease ?? true,
-      generateVersionJson:
-        initialReleaseConfig.generateVersionJson ?? selectedLanguages.includes('javascript'),
-      versionJsonPath: initialReleaseConfig.versionJsonPath || 'public/version.json',
-      buildStep:
-        initialReleaseConfig.buildStep !== undefined
-          ? initialReleaseConfig.buildStep
-          : detectBuildStep(targetPath, pm, selectedLanguages) || null,
-      workflowVersion: cliVersion,
+    if (isMonorepo) {
+      const projects = initialReleaseConfig.projects || scanSubProjects(targetPath)
+      projects.forEach((proj) => {
+        proj.workflowVersion = proj.workflowVersion || cliVersion
+      })
+      finalReleaseConfig = {
+        projects,
+        push: initialReleaseConfig.push ?? true,
+        githubRelease: initialReleaseConfig.githubRelease ?? true,
+      }
+    } else {
+      finalReleaseConfig = {
+        versionSource:
+          initialReleaseConfig.versionSource ||
+          (selectedLanguages.includes('javascript') ? 'package.json' : 'version.json'),
+        changelogPath: initialReleaseConfig.changelogPath || 'CHANGELOG.md',
+        push: initialReleaseConfig.push ?? true,
+        githubRelease: initialReleaseConfig.githubRelease ?? true,
+        generateVersionJson:
+          initialReleaseConfig.generateVersionJson ?? selectedLanguages.includes('javascript'),
+        versionJsonPath: initialReleaseConfig.versionJsonPath || 'public/version.json',
+        buildStep:
+          initialReleaseConfig.buildStep !== undefined
+            ? initialReleaseConfig.buildStep
+            : detectBuildStep(targetPath, pm, selectedLanguages) || null,
+        workflowVersion: cliVersion,
+      }
     }
   } else {
     // 3. Prompt for Language verification/selection
@@ -180,17 +204,6 @@ async function run() {
       )
     }
 
-    const generateVersionJson = await p.confirm({
-      message: 'Integrate automatic frontend metadata compiler? (scripts/generate-version.js)',
-      initialValue:
-        initialReleaseConfig.generateVersionJson ?? selectedLanguages.includes('javascript'),
-    })
-
-    if (p.isCancel(generateVersionJson)) {
-      p.cancel('Setup aborted.')
-      process.exit(0)
-    }
-
     const push = await p.confirm({
       message: 'Enable automatic push of commits/tags to origin on local releases?',
       initialValue: initialReleaseConfig.push ?? true,
@@ -211,32 +224,55 @@ async function run() {
       process.exit(0)
     }
 
-    const hasBuildStep = initialReleaseConfig.buildStep !== undefined
-    const detectedBuildStep = detectBuildStep(targetPath, pm, selectedLanguages)
-    const buildStepInput = await p.text({
-      message: 'Command to execute for build validation (press Enter to skip):',
-      placeholder: 'e.g. pnpm run build',
-      initialValue: hasBuildStep ? initialReleaseConfig.buildStep || '' : detectedBuildStep || '',
-    })
+    if (isMonorepo) {
+      const projects = initialReleaseConfig.projects || scanSubProjects(targetPath)
+      projects.forEach((proj) => {
+        proj.workflowVersion = proj.workflowVersion || cliVersion
+      })
+      finalReleaseConfig = {
+        projects,
+        push,
+        githubRelease,
+      }
+    } else {
+      const generateVersionJson = await p.confirm({
+        message: 'Integrate automatic frontend metadata compiler? (scripts/generate-version.js)',
+        initialValue:
+          initialReleaseConfig.generateVersionJson ?? selectedLanguages.includes('javascript'),
+      })
 
-    if (p.isCancel(buildStepInput)) {
-      p.cancel('Setup aborted.')
-      process.exit(0)
-    }
+      if (p.isCancel(generateVersionJson)) {
+        p.cancel('Setup aborted.')
+        process.exit(0)
+      }
 
-    const buildStep = buildStepInput.trim() === '' ? null : buildStepInput.trim()
+      const hasBuildStep = initialReleaseConfig.buildStep !== undefined
+      const detectedBuildStep = detectBuildStep(targetPath, pm, selectedLanguages)
+      const buildStepInput = await p.text({
+        message: 'Command to execute for build validation (press Enter to skip):',
+        placeholder: 'e.g. pnpm run build',
+        initialValue: hasBuildStep ? initialReleaseConfig.buildStep || '' : detectedBuildStep || '',
+      })
 
-    finalReleaseConfig = {
-      versionSource:
-        initialReleaseConfig.versionSource ||
-        (selectedLanguages.includes('javascript') ? 'package.json' : 'version.json'),
-      changelogPath: initialReleaseConfig.changelogPath || 'CHANGELOG.md',
-      push,
-      githubRelease,
-      generateVersionJson,
-      versionJsonPath: initialReleaseConfig.versionJsonPath || 'public/version.json',
-      buildStep,
-      workflowVersion: cliVersion,
+      if (p.isCancel(buildStepInput)) {
+        p.cancel('Setup aborted.')
+        process.exit(0)
+      }
+
+      const buildStep = buildStepInput.trim() === '' ? null : buildStepInput.trim()
+
+      finalReleaseConfig = {
+        versionSource:
+          initialReleaseConfig.versionSource ||
+          (selectedLanguages.includes('javascript') ? 'package.json' : 'version.json'),
+        changelogPath: initialReleaseConfig.changelogPath || 'CHANGELOG.md',
+        push,
+        githubRelease,
+        generateVersionJson,
+        versionJsonPath: initialReleaseConfig.versionJsonPath || 'public/version.json',
+        buildStep,
+        workflowVersion: cliVersion,
+      }
     }
   }
 

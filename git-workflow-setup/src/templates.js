@@ -128,17 +128,41 @@ try {
   }
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'))
   
-  const sourcePath = path.resolve(process.cwd(), config.versionSource)
-  const changelogPath = path.resolve(process.cwd(), config.changelogPath)
-  const outputPath = path.resolve(process.cwd(), config.versionJsonPath)
+  const args = process.argv.slice(2)
+  const targetProjectName = args[0]
+
+  // Resolve config to project or root
+  let projectConfig = config
+  if (config.projects && Array.isArray(config.projects)) {
+    if (targetProjectName) {
+      projectConfig = config.projects.find((p) => p.name === targetProjectName) || config.projects[0]
+    } else {
+      projectConfig = config.projects[0]
+    }
+  }
+  
+  const sourcePath = path.resolve(process.cwd(), projectConfig.versionSource)
+  const changelogPath = path.resolve(process.cwd(), projectConfig.changelogPath)
+
+  if (!projectConfig.versionJsonPath) {
+    console.error('No versionJsonPath defined in configuration.')
+    process.exit(1)
+  }
+  const outputPath = path.resolve(process.cwd(), projectConfig.versionJsonPath)
 
   if (!fs.existsSync(sourcePath)) {
-    console.error(\`Version source file not found at \${config.versionSource}\`)
+    console.error(\`Version source file not found at \${projectConfig.versionSource}\`)
     process.exit(1)
   }
 
-  const pkgJson = JSON.parse(fs.readFileSync(sourcePath, 'utf8'))
-  const version = pkgJson.version
+  // Handle version source reading
+  let version = ''
+  if (projectConfig.versionSource.endsWith('.json')) {
+    const jsonContent = JSON.parse(fs.readFileSync(sourcePath, 'utf8'))
+    version = jsonContent.version
+  } else {
+    version = fs.readFileSync(sourcePath, 'utf8').trim()
+  }
 
   let changelog = ''
   if (fs.existsSync(changelogPath)) {
@@ -161,7 +185,7 @@ try {
   }
 
   fs.writeFileSync(outputPath, JSON.stringify(versionInfo, null, 2), 'utf8')
-  console.log(\`Successfully generated \${config.versionJsonPath} for v\${version}\`)
+  console.log(\`Successfully generated \${projectConfig.versionJsonPath} for v\${version}\`)
 } catch (error) {
   console.error('Failed to generate version info:', error)
   process.exit(1)
@@ -216,9 +240,10 @@ const isGitClean = () => {
   }
 }
 
-const getLastTag = () => {
+const getLastTag = (projectName, isRoot) => {
   try {
-    return execSync('git describe --tags --abbrev=0', { encoding: 'utf-8' }).trim()
+    const matchPattern = isRoot ? 'v[0-9]*' : \`\${projectName}@v[0-9]*\`
+    return execSync(\`git describe --tags --match "\${matchPattern}" --abbrev=0\`, { encoding: 'utf-8' }).trim()
   } catch (e) {
     return ''
   }
@@ -241,9 +266,10 @@ const getFirstCommit = () => {
   }
 }
 
-const getCommitsSinceLastTag = (range) => {
+const getCommitsSinceLastTag = (range, projectPath) => {
   try {
-    const log = execSync(\`git log \${range} --pretty=format:"%h|%s"\`, { encoding: 'utf-8' }).trim()
+    const pathFilter = projectPath && projectPath !== '.' ? \` -- \${projectPath}\` : ''
+    const log = execSync(\`git log \${range} --pretty=format:"%h|%s"\${pathFilter}\`, { encoding: 'utf-8' }).trim()
     if (!log) return []
     return log.split('\\n').map((line) => {
       const parts = line.split('|')
@@ -496,10 +522,42 @@ const run = async () => {
 
   p.log.success('Working directory is clean.')
 
+  // Resolve project choice if monorepo
+  let project = {
+    name: 'root',
+    path: '.',
+    versionSource: config.versionSource || 'package.json',
+    changelogPath: config.changelogPath || 'CHANGELOG.md',
+    buildStep: config.buildStep,
+    generateVersionJson: config.generateVersionJson ?? false,
+    versionJsonPath: config.versionJsonPath || 'public/version.json',
+    workflowVersion: config.workflowVersion
+  }
+
+  if (config.projects && Array.isArray(config.projects)) {
+    const projectOptions = config.projects.map((proj) => ({
+      value: proj,
+      label: \`\${proj.name} \${colors.dim}(\${proj.path})\${colors.reset}\`,
+    }))
+
+    const selected = await p.select({
+      message: 'Select project/package to release:',
+      options: projectOptions,
+    })
+
+    if (p.isCancel(selected)) {
+      p.cancel('Release aborted.')
+      process.exit(0)
+    }
+    project = selected
+  }
+
+  const isRoot = project.path === '.'
+
   // Read current version
-  const sourcePath = path.resolve(process.cwd(), config.versionSource)
+  const sourcePath = path.resolve(process.cwd(), project.versionSource)
   if (!fs.existsSync(sourcePath)) {
-    p.log.error(\`Version source file not found at \${config.versionSource}\`)
+    p.log.error(\`Version source file not found at \${project.versionSource}\`)
     process.exit(1)
   }
 
@@ -507,7 +565,7 @@ const run = async () => {
   let currentVersion = ''
   let parsedSource = null
 
-  if (config.versionSource.endsWith('.json')) {
+  if (project.versionSource.endsWith('.json')) {
     parsedSource = JSON.parse(sourceContent)
     currentVersion = parsedSource.version
   } else {
@@ -518,7 +576,7 @@ const run = async () => {
   const s = p.spinner()
   s.start('Analyzing commits since last release tag...')
 
-  const lastTag = getLastTag()
+  const lastTag = getLastTag(project.name, isRoot)
   let commitsRange = 'HEAD'
   if (lastTag) {
     commitsRange = \`\${lastTag}..HEAD\`
@@ -529,7 +587,7 @@ const run = async () => {
     }
   }
 
-  const commits = getCommitsSinceLastTag(commitsRange)
+  const commits = getCommitsSinceLastTag(commitsRange, project.path)
   const repoUrl = getRemoteRepoUrl()
   const { groups, recommendedType } = parseCommits(commits, repoUrl)
 
@@ -611,7 +669,7 @@ const run = async () => {
     newVersion = semver(currentVersion, versionType)
   }
 
-  const targetTagName = \`v\${newVersion}\`
+  const targetTagName = isRoot ? \`v\${newVersion}\` : \`\${project.name}@v\${newVersion}\`
   if (tagExists(targetTagName)) {
     p.log.error(\`Error: Git tag '\${targetTagName}' already exists. Please choose a different version.\`)
     p.outro('Release aborted.')
@@ -625,7 +683,7 @@ const run = async () => {
 
   if (!autoYes) {
     const proceed = await p.confirm({
-      message: \`Confirm release v\${newVersion}?\`,
+      message: \`Confirm release \${targetTagName}?\`,
       initialValue: true,
     })
 
@@ -639,23 +697,23 @@ const run = async () => {
   const s2 = p.spinner()
   s2.start('Updating version manifest files and CHANGELOG.md...')
   
-  if (config.versionSource.endsWith('.json')) {
+  if (project.versionSource.endsWith('.json')) {
     parsedSource.version = newVersion
     fs.writeFileSync(sourcePath, JSON.stringify(parsedSource, null, 2) + '\\n', 'utf8')
   } else {
     fs.writeFileSync(sourcePath, newVersion + '\\n', 'utf8')
   }
 
-  const changelogPath = path.resolve(process.cwd(), config.changelogPath)
+  const changelogPath = path.resolve(process.cwd(), project.changelogPath)
   updateChangelogFile(changelogPath, changelogEntry)
   s2.stop('Version files updated.')
 
   // Step 8: Optional pre-build steps
-  if (config.buildStep) {
+  if (project.buildStep) {
     const sBuild = p.spinner()
-    sBuild.start(\`Executing build validation: \${config.buildStep}...\`)
+    sBuild.start(\`Executing build validation: \${project.buildStep}...\`)
     try {
-      execSync(config.buildStep, { stdio: 'pipe' })
+      execSync(project.buildStep, { stdio: 'pipe' })
       sBuild.stop('Build verification passed!')
     } catch (e) {
       sBuild.stop('Build step validation failed!')
@@ -667,19 +725,32 @@ const run = async () => {
   // Step 9: Git Commit & Tag locally
   const s3 = p.spinner()
   s3.start('Creating git release tag...')
-  const releaseTagName = \`v\${newVersion}\`
+  const releaseTagName = targetTagName
   try {
-    execSync(\`git add \${config.versionSource} \${config.changelogPath}\`, { stdio: 'pipe' })
+    execSync(\`git add \${project.versionSource} \${project.changelogPath}\`, { stdio: 'pipe' })
     
     // Add version JSON if generated
-    if (config.generateVersionJson) {
+    if (project.generateVersionJson) {
       try {
-        execSync(\`node scripts/generate-version.js\`, { stdio: 'pipe' })
-        execSync(\`git add \${config.versionJsonPath}\`, { stdio: 'pipe' })
+        execSync(\`node scripts/generate-version.js \${project.name}\`, { stdio: 'pipe' })
+        execSync(\`git add \${project.versionJsonPath}\`, { stdio: 'pipe' })
       } catch (err) {}
     }
 
-    execSync(\`git commit -m "chore(main): release \${releaseTagName}"\`, { stdio: 'pipe' })
+    // Also update workflowVersion inside release.config.json and stage it
+    if (config.projects && Array.isArray(config.projects)) {
+      const projIdx = config.projects.findIndex((p) => p.name === project.name)
+      if (projIdx !== -1) {
+        config.projects[projIdx].workflowVersion = newVersion
+      }
+    } else {
+      config.workflowVersion = newVersion
+    }
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\\n', 'utf8')
+    execSync(\`git add release.config.json\`, { stdio: 'pipe' })
+
+    const commitScope = isRoot ? 'main' : project.name
+    execSync(\`git commit -m "chore(\${commitScope}): release \${releaseTagName}"\`, { stdio: 'pipe' })
     execSync(\`git tag -a \${releaseTagName} -m "Release \${releaseTagName}"\`, { stdio: 'pipe' })
     s3.stop(\`Local release tag created: \${releaseTagName}\`)
   } catch (e) {
@@ -689,8 +760,8 @@ const run = async () => {
   }
 
   // Step 10: Push to origin
-  let shouldPush = autoYes && config.push
-  if (!autoYes && config.push) {
+  let shouldPush = autoYes && (project.push ?? config.push)
+  if (!autoYes && (project.push ?? config.push ?? true)) {
     const pushConfirm = await p.confirm({
       message: 'Push commits and tags to remote origin?',
       initialValue: true,
@@ -713,8 +784,8 @@ const run = async () => {
     }
 
     // Step 11: Create GitHub Release via gh CLI
-    let shouldRelease = autoYes && config.githubRelease
-    if (!autoYes && config.githubRelease) {
+    let shouldRelease = autoYes && (project.githubRelease ?? config.githubRelease)
+    if (!autoYes && (project.githubRelease ?? config.githubRelease ?? true)) {
       const releaseConfirm = await p.confirm({
         message: 'Create official GitHub Release via gh CLI?',
         initialValue: true,
