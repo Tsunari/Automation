@@ -52,7 +52,11 @@ export function updatePackageJson(projectPath, packageManager, releaseConfig) {
   pkg.scripts.release = 'node scripts/release.js'
   pkg.scripts.prepare = 'husky'
 
-  if (releaseConfig.generateVersionJson) {
+  const anyGenVer =
+    releaseConfig.generateVersionJson ||
+    (releaseConfig.projects && releaseConfig.projects.some((p) => p.generateVersionJson))
+
+  if (anyGenVer) {
     if (pkg.scripts.build) {
       if (!pkg.scripts.build.includes('generate-version.js')) {
         pkg.scripts.build = `node scripts/generate-version.js && ${pkg.scripts.build}`
@@ -114,7 +118,11 @@ export function writeConfigurations(projectPath, packageManager, languages, rele
 
   // 5. Release execution scripts
   checkAndWrite('scripts/release.js', getReleaseJsTemplate())
-  if (mergedConfig.generateVersionJson) {
+  const anyGenVer =
+    mergedConfig.generateVersionJson ||
+    (mergedConfig.projects && mergedConfig.projects.some((p) => p.generateVersionJson))
+
+  if (anyGenVer) {
     checkAndWrite('scripts/generate-version.js', getGenerateVersionTemplate())
   } else {
     // Clean up generate-version if feature disabled
