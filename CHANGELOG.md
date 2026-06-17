@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.1](https://github.com/Tsunari/Automation/compare/v1.0.0...1.0.1) (2026-06-17)
+
+### Bug Fixes
+
+- **git-workflow-setup**: fix duplicate variable declaration scope conflict in release script ([d04b0fa](https://github.com/Tsunari/Automation/commit/d04b0fa))
+- doubled changelog generation ([fc25450](https://github.com/Tsunari/Automation/commit/fc25450))
+- **git-workflow-setup**: early abort release script if git tag already exists ([b6958e9](https://github.com/Tsunari/Automation/commit/b6958e9))
+
+# Changelog
+
 ## 1.0.0 (2026-06-17)
 
 ### Features
