@@ -1,0 +1,17 @@
+{
+  "name": "automation",
+  "version": "1.0.0",
+  "description": "Private workspace monorepo containing multiple automated development and pipeline scripting utilities.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "git-workflow-setup": "./git-workflow-setup/src/index.js"
+  },
+  "scripts": {
+    "test": "node git-workflow-setup/test/setup.test.js"
+  },
+  "license": "GPL-3.0-only",
+  "dependencies": {
+    "@clack/prompts": "^1.5.1"
+  }
+}

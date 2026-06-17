@@ -1,0 +1,26 @@
+{
+  "name": "git-workflow-setup",
+  "version": "1.0.0",
+  "description": "Interactive CLI tool to bootstrap Git conventions, lint-staged, commitlint, and custom TUI releases on any codebase.",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "git-workflow-setup": "./src/index.js"
+  },
+  "scripts": {
+    "test": "node test/setup.test.js"
+  },
+  "keywords": [
+    "git",
+    "workflow",
+    "release",
+    "commitlint",
+    "husky",
+    "lint-staged"
+  ],
+  "author": "Tunahan Kakici",
+  "license": "GPL-3.0-only",
+  "dependencies": {
+    "@clack/prompts": "^1.5.1"
+  }
+}
