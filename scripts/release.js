@@ -49,6 +49,15 @@ const getLastTag = () => {
   }
 }
 
+const tagExists = (tagName) => {
+  try {
+    execSync(`git rev-parse --verify refs/tags/${tagName}`, { stdio: 'ignore' })
+    return true
+  } catch (e) {
+    return false
+  }
+}
+
 const getFirstCommit = () => {
   try {
     return execSync('git rev-list --max-parents=0 HEAD', { encoding: 'utf-8' }).trim()
@@ -427,6 +436,15 @@ const run = async () => {
     newVersion = customInput
   } else {
     newVersion = semver(currentVersion, versionType)
+  }
+
+  const releaseTagName = `v${newVersion}`
+  if (tagExists(releaseTagName)) {
+    p.log.error(
+      `Error: Git tag '${releaseTagName}' already exists. Please choose a different version.`,
+    )
+    p.outro('Release aborted.')
+    process.exit(1)
   }
 
   const changelogEntry = generateChangelogEntry(newVersion, lastTag, groups, repoUrl)
