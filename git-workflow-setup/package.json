@@ -1,6 +1,6 @@
 {
   "name": "git-workflow-setup",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Interactive CLI tool to bootstrap Git conventions, lint-staged, commitlint, and custom TUI releases on any codebase.",
   "type": "module",
   "main": "src/index.js",

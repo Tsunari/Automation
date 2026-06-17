@@ -16,7 +16,7 @@
       "versionSource": "git-workflow-setup/package.json",
       "changelogPath": "git-workflow-setup/CHANGELOG.md",
       "generateVersionJson": false,
-      "workflowVersion": "1.0.2"
+      "workflowVersion": "1.1.0"
     }
   ],
   "push": true,
