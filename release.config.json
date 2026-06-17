@@ -1,0 +1,9 @@
+{
+  "versionSource": "package.json",
+  "changelogPath": "CHANGELOG.md",
+  "push": true,
+  "githubRelease": true,
+  "generateVersionJson": true,
+  "versionJsonPath": "public/version.json",
+  "buildStep": "pnpm run build"
+}
