@@ -9,7 +9,7 @@ import {
   getLintStagedTemplate,
   getReleaseConfigTemplate,
   getGenerateVersionTemplate,
-  getReleaseJsTemplate
+  getReleaseJsTemplate,
 } from './templates.js'
 
 /**
@@ -26,24 +26,32 @@ function ensureDir(dirPath) {
  */
 export function updatePackageJson(projectPath, packageManager, releaseConfig) {
   const pkgPath = path.join(projectPath, 'package.json')
-  
+
   if (!fs.existsSync(pkgPath)) {
     // Scaffold minimal package.json if missing
-    fs.writeFileSync(pkgPath, JSON.stringify({
-      name: path.basename(projectPath),
-      version: '1.0.0',
-      private: true,
-      type: 'module'
-    }, null, 2) + '\n', 'utf8')
+    fs.writeFileSync(
+      pkgPath,
+      JSON.stringify(
+        {
+          name: path.basename(projectPath),
+          version: '1.0.0',
+          private: true,
+          type: 'module',
+        },
+        null,
+        2,
+      ) + '\n',
+      'utf8',
+    )
   }
 
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
-  
+
   // 1. Core scripts
   pkg.scripts = pkg.scripts || {}
   pkg.scripts.release = 'node scripts/release.js'
   pkg.scripts.prepare = 'husky'
-  
+
   if (releaseConfig.generateVersionJson) {
     if (pkg.scripts.build) {
       if (!pkg.scripts.build.includes('generate-version.js')) {
@@ -83,7 +91,10 @@ export function writeConfigurations(projectPath, packageManager, languages, rele
 
   // Make Husky hook files executable on Unix
   try {
-    execSync(`chmod +x "${path.join(projectPath, '.husky/commit-msg')}" "${path.join(projectPath, '.husky/pre-commit')}"`, { stdio: 'ignore' })
+    execSync(
+      `chmod +x "${path.join(projectPath, '.husky/commit-msg')}" "${path.join(projectPath, '.husky/pre-commit')}"`,
+      { stdio: 'ignore' },
+    )
   } catch (e) {
     // Ignore on Windows
   }
@@ -120,12 +131,6 @@ export function writeConfigurations(projectPath, packageManager, languages, rele
       checkAndWrite('version.json', '1.0.0')
     }
   }
-
-  // 7. CHANGELOG placeholder
-  const changelogPath = path.join(projectPath, 'CHANGELOG.md')
-  if (!fs.existsSync(changelogPath)) {
-    checkAndWrite('CHANGELOG.md', '# Changelog\n')
-  }
 }
 
 /**
@@ -145,7 +150,6 @@ export function installDependencies(projectPath, packageManager) {
     'prettier',
     '@commitlint/cli',
     '@commitlint/config-conventional',
-    '@clack/prompts'
   ]
 
   // Execute package manager installation
@@ -153,7 +157,8 @@ export function installDependencies(projectPath, packageManager) {
 
   // Initialize Husky hooks locally
   try {
-    const runPrepareCmd = packageManager === 'npm' ? 'npm run prepare' : `${packageManager} run prepare`
+    const runPrepareCmd =
+      packageManager === 'npm' ? 'npm run prepare' : `${packageManager} run prepare`
     execSync(runPrepareCmd, { cwd: projectPath, stdio: 'pipe' })
   } catch (err) {
     // If Husky setup fails (e.g. not in Git repository yet), run manual creation

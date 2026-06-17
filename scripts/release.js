@@ -269,14 +269,18 @@ const updateChangelogFile = (changelogPath, entry) => {
     existingContent = fs.readFileSync(changelogPath, 'utf8')
   }
 
+  // Normalize line endings to avoid CRLF mismatch on Windows
+  existingContent = existingContent.replace(/\r\n/g, '\n')
+  entry = entry.replace(/\r\n/g, '\n')
+
   const header = '# Changelog\n\n'
-  let body = existingContent
-  if (existingContent.startsWith(header)) {
-    body = existingContent.slice(header.length)
+  let body = existingContent.trim()
+  if (body.startsWith('# Changelog')) {
+    body = body.slice('# Changelog').trim()
   }
 
-  const newContent = header + entry + body
-  fs.writeFileSync(changelogPath, newContent, 'utf8')
+  const newContent = header + entry.trim() + '\n\n' + body
+  fs.writeFileSync(changelogPath, newContent.trim() + '\n', 'utf8')
 }
 
 const run = async () => {

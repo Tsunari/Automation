@@ -14,8 +14,10 @@
     "prepare": "husky"
   },
   "license": "GPL-3.0-only",
+  "dependencies": {
+    "@clack/prompts": "^1.5.1"
+  },
   "devDependencies": {
-    "@clack/prompts": "^1.5.1",
     "@commitlint/cli": "^21.0.2",
     "@commitlint/config-conventional": "^21.0.2",
     "husky": "^9.1.7",
