@@ -7,13 +7,13 @@ import {
   detectLanguages,
   detectPackageManager,
   detectExistingConfigs,
-  detectBuildStep
+  detectBuildStep,
 } from './detector.js'
-import {
-  updatePackageJson,
-  writeConfigurations,
-  installDependencies
-} from './writer.js'
+import { updatePackageJson, writeConfigurations, installDependencies } from './writer.js'
+
+const pkgPath = new URL('../package.json', import.meta.url)
+const cliPkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
+const cliVersion = cliPkg.version
 
 const colors = {
   reset: '\x1b[0m',
@@ -26,9 +26,7 @@ const colors = {
 }
 
 async function run() {
-  p.intro(
-    `${colors.bright}${colors.cyan}Git Pipeline & Release Initializer${colors.reset}`
-  )
+  p.intro(`${colors.bright}${colors.cyan}Git Pipeline & Release Initializer${colors.reset}`)
 
   const targetPath = process.cwd()
   p.log.info(`Target workspace: ${colors.bright}${targetPath}${colors.reset}`)
@@ -59,107 +57,172 @@ async function run() {
   const detectedLanguages = detectLanguages(targetPath)
   const detectedPm = detectPackageManager(targetPath)
   const existingConfigs = detectExistingConfigs(targetPath)
+  const initialReleaseConfig = existingConfigs.releaseConfig || {}
+  const oldVersion = initialReleaseConfig.workflowVersion
 
-  // 3. Prompt for Language verification/selection
-  const selectedLanguages = await p.multiselect({
-    message: 'Select project languages (detected selections highlighted):',
-    options: [
-      { value: 'javascript', label: 'JavaScript / TypeScript' },
-      { value: 'python', label: 'Python' },
-      { value: 'go', label: 'Go' },
-      { value: 'rust', label: 'Rust' },
-      { value: 'general', label: 'General Project (Markdown/JSON)' },
-    ],
-    required: true,
-    initialValues: detectedLanguages,
-  })
-
-  if (p.isCancel(selectedLanguages)) {
-    p.cancel('Setup aborted.')
-    process.exit(0)
+  if (oldVersion && oldVersion !== cliVersion) {
+    p.log.warn(
+      `${colors.yellow}⚠ A newer workflow version is available (installed: v${oldVersion}, latest: v${cliVersion}).${colors.reset}`,
+    )
+    p.log.info(
+      `Run with ${colors.cyan}--update${colors.reset} to update your scripts automatically without prompts.`,
+    )
   }
 
-  // 4. Prompt for Package Manager
-  let pm = detectedPm
-  if (detectedPm) {
-    p.log.info(`Detected active package manager: ${colors.bright}${detectedPm}${colors.reset} (found lockfile)`)
+  let selectedLanguages
+  let pm
+  let finalReleaseConfig
+
+  const args = process.argv.slice(2)
+  const isRepair = args.includes('--repair') || args.includes('-r')
+  const isUpdate = args.includes('--update') || args.includes('-u')
+
+  if (isUpdate) {
+    if (oldVersion === cliVersion) {
+      p.log.success(
+        `${colors.green}✔ Already up-to-date (v${cliVersion})!${colors.reset} Use ${colors.cyan}--repair${colors.reset} to force refresh your files.`,
+      )
+      process.exit(0)
+    }
+    p.log.info(
+      `${colors.green}🔧 Upgrading workflow scripts:${colors.reset} v${oldVersion || 'unknown'} -> v${cliVersion}...`,
+    )
+  } else if (isRepair) {
+    p.log.info(
+      `${colors.green}🔧 Repair Mode:${colors.reset} Force-refreshing all workflow scripts and hooks...`,
+    )
+  }
+
+  const isBypass = isRepair || isUpdate
+
+  if (isBypass) {
+    selectedLanguages = detectedLanguages
+    pm = detectedPm || 'pnpm'
+    finalReleaseConfig = {
+      versionSource:
+        initialReleaseConfig.versionSource ||
+        (selectedLanguages.includes('javascript') ? 'package.json' : 'version.json'),
+      changelogPath: initialReleaseConfig.changelogPath || 'CHANGELOG.md',
+      push: initialReleaseConfig.push ?? true,
+      githubRelease: initialReleaseConfig.githubRelease ?? true,
+      generateVersionJson:
+        initialReleaseConfig.generateVersionJson ?? selectedLanguages.includes('javascript'),
+      versionJsonPath: initialReleaseConfig.versionJsonPath || 'public/version.json',
+      buildStep:
+        initialReleaseConfig.buildStep !== undefined
+          ? initialReleaseConfig.buildStep
+          : detectBuildStep(targetPath, pm, selectedLanguages) || null,
+      workflowVersion: cliVersion,
+    }
   } else {
-    pm = await p.select({
-      message: 'No lockfile found. Choose preferred package manager to run setup dev dependencies:',
+    // 3. Prompt for Language verification/selection
+    selectedLanguages = await p.multiselect({
+      message: 'Select project languages (detected selections highlighted):',
       options: [
-        { value: 'pnpm', label: 'pnpm (Recommended)', hint: 'Fast, link-optimized' },
-        { value: 'npm', label: 'npm', hint: 'Default Node.js package manager' },
-        { value: 'yarn', label: 'yarn', hint: 'Classic yarn dependencies manager' },
+        { value: 'javascript', label: 'JavaScript / TypeScript' },
+        { value: 'python', label: 'Python' },
+        { value: 'go', label: 'Go' },
+        { value: 'rust', label: 'Rust' },
+        { value: 'general', label: 'General Project (Markdown/JSON)' },
       ],
-      initialValue: 'pnpm',
+      required: true,
+      initialValues: detectedLanguages,
     })
 
-    if (p.isCancel(pm)) {
+    if (p.isCancel(selectedLanguages)) {
       p.cancel('Setup aborted.')
       process.exit(0)
     }
-  }
 
-  // 5. Prompt for Release Configurations (Load existing configs if available)
-  const initialReleaseConfig = existingConfigs.releaseConfig || {}
-  
-  if (existingConfigs.releaseConfig) {
-    p.log.info(`${colors.green}ℹ Existing release.config.json found.${colors.reset} Merging options modularly.`)
-  }
+    // 4. Prompt for Package Manager
+    pm = detectedPm
+    if (detectedPm) {
+      p.log.info(
+        `Detected active package manager: ${colors.bright}${detectedPm}${colors.reset} (found lockfile)`,
+      )
+    } else {
+      pm = await p.select({
+        message:
+          'No lockfile found. Choose preferred package manager to run setup dev dependencies:',
+        options: [
+          { value: 'pnpm', label: 'pnpm (Recommended)', hint: 'Fast, link-optimized' },
+          { value: 'npm', label: 'npm', hint: 'Default Node.js package manager' },
+          { value: 'yarn', label: 'yarn', hint: 'Classic yarn dependencies manager' },
+        ],
+        initialValue: 'pnpm',
+      })
 
-  const generateVersionJson = await p.confirm({
-    message: 'Integrate automatic frontend metadata compiler? (scripts/generate-version.js)',
-    initialValue: initialReleaseConfig.generateVersionJson ?? selectedLanguages.includes('javascript'),
-  })
+      if (p.isCancel(pm)) {
+        p.cancel('Setup aborted.')
+        process.exit(0)
+      }
+    }
 
-  if (p.isCancel(generateVersionJson)) {
-    p.cancel('Setup aborted.')
-    process.exit(0)
-  }
+    // 5. Prompt for Release Configurations (Load existing configs if available)
+    if (existingConfigs.releaseConfig) {
+      p.log.info(
+        `${colors.green}ℹ Existing release.config.json found.${colors.reset} Merging options modularly.`,
+      )
+    }
 
-  const push = await p.confirm({
-    message: 'Enable automatic push of commits/tags to origin on local releases?',
-    initialValue: initialReleaseConfig.push ?? true,
-  })
+    const generateVersionJson = await p.confirm({
+      message: 'Integrate automatic frontend metadata compiler? (scripts/generate-version.js)',
+      initialValue:
+        initialReleaseConfig.generateVersionJson ?? selectedLanguages.includes('javascript'),
+    })
 
-  if (p.isCancel(push)) {
-    p.cancel('Setup aborted.')
-    process.exit(0)
-  }
+    if (p.isCancel(generateVersionJson)) {
+      p.cancel('Setup aborted.')
+      process.exit(0)
+    }
 
-  const githubRelease = await p.confirm({
-    message: 'Publish releases to GitHub via CLI (gh release create)?',
-    initialValue: initialReleaseConfig.githubRelease ?? true,
-  })
+    const push = await p.confirm({
+      message: 'Enable automatic push of commits/tags to origin on local releases?',
+      initialValue: initialReleaseConfig.push ?? true,
+    })
 
-  if (p.isCancel(githubRelease)) {
-    p.cancel('Setup aborted.')
-    process.exit(0)
-  }
+    if (p.isCancel(push)) {
+      p.cancel('Setup aborted.')
+      process.exit(0)
+    }
 
-  const hasBuildStep = initialReleaseConfig.buildStep !== undefined
-  const detectedBuildStep = detectBuildStep(targetPath, pm, selectedLanguages)
-  const buildStepInput = await p.text({
-    message: 'Command to execute for build validation (press Enter to skip):',
-    placeholder: 'e.g. pnpm run build',
-    initialValue: hasBuildStep ? (initialReleaseConfig.buildStep || '') : (detectedBuildStep || ''),
-  })
+    const githubRelease = await p.confirm({
+      message: 'Publish releases to GitHub via CLI (gh release create)?',
+      initialValue: initialReleaseConfig.githubRelease ?? true,
+    })
 
-  if (p.isCancel(buildStepInput)) {
-    p.cancel('Setup aborted.')
-    process.exit(0)
-  }
+    if (p.isCancel(githubRelease)) {
+      p.cancel('Setup aborted.')
+      process.exit(0)
+    }
 
-  const buildStep = buildStepInput.trim() === '' ? null : buildStepInput.trim()
+    const hasBuildStep = initialReleaseConfig.buildStep !== undefined
+    const detectedBuildStep = detectBuildStep(targetPath, pm, selectedLanguages)
+    const buildStepInput = await p.text({
+      message: 'Command to execute for build validation (press Enter to skip):',
+      placeholder: 'e.g. pnpm run build',
+      initialValue: hasBuildStep ? initialReleaseConfig.buildStep || '' : detectedBuildStep || '',
+    })
 
-  const finalReleaseConfig = {
-    versionSource: initialReleaseConfig.versionSource || (selectedLanguages.includes('javascript') ? 'package.json' : 'version.json'),
-    changelogPath: initialReleaseConfig.changelogPath || 'CHANGELOG.md',
-    push,
-    githubRelease,
-    generateVersionJson,
-    versionJsonPath: initialReleaseConfig.versionJsonPath || 'public/version.json',
-    buildStep
+    if (p.isCancel(buildStepInput)) {
+      p.cancel('Setup aborted.')
+      process.exit(0)
+    }
+
+    const buildStep = buildStepInput.trim() === '' ? null : buildStepInput.trim()
+
+    finalReleaseConfig = {
+      versionSource:
+        initialReleaseConfig.versionSource ||
+        (selectedLanguages.includes('javascript') ? 'package.json' : 'version.json'),
+      changelogPath: initialReleaseConfig.changelogPath || 'CHANGELOG.md',
+      push,
+      githubRelease,
+      generateVersionJson,
+      versionJsonPath: initialReleaseConfig.versionJsonPath || 'public/version.json',
+      buildStep,
+      workflowVersion: cliVersion,
+    }
   }
 
   // 6. Execution phase with beautiful spinners
@@ -170,7 +233,9 @@ async function run() {
     writeConfigurations(targetPath, pm, selectedLanguages, finalReleaseConfig)
     s.stop(`${colors.green}✔ Configuration and script files generated!${colors.reset}`)
   } catch (error) {
-    s.stop(`${colors.red}✘ Failed to write configuration templates:${colors.reset} ${error.message}`)
+    s.stop(
+      `${colors.red}✘ Failed to write configuration templates:${colors.reset} ${error.message}`,
+    )
     process.exit(1)
   }
 
@@ -186,11 +251,17 @@ async function run() {
   }
 
   // 7. Successful Completion outro
-  p.outro(`${colors.green}${colors.bright}Git Pipeline setup completed successfully! 🎉${colors.reset}\n`)
-  
+  p.outro(
+    `${colors.green}${colors.bright}Git Pipeline setup completed successfully! 🎉${colors.reset}\n`,
+  )
+
   console.log(`${colors.dim}❯ Commands to run next:${colors.reset}`)
-  console.log(`  • Stage files and run a commit: ${colors.cyan}git add . && git commit -m "feat: bootstrap workflow"${colors.reset}`)
-  console.log(`  • Run the release wizard: ${colors.cyan}${pm === 'npm' ? 'npm run' : pm} release${colors.reset}\n`)
+  console.log(
+    `  • Stage files and run a commit: ${colors.cyan}git add . && git commit -m "feat: bootstrap workflow"${colors.reset}`,
+  )
+  console.log(
+    `  • Run the release wizard: ${colors.cyan}${pm === 'npm' ? 'npm run' : pm} release${colors.reset}\n`,
+  )
 }
 
 run().catch((e) => {

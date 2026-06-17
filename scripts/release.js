@@ -285,7 +285,7 @@ const updateChangelogFile = (changelogPath, entry) => {
   const header = '# Changelog\n\n'
   let body = existingContent.trim()
   if (body.startsWith('# Changelog')) {
-    body = body.slice('# Changelog').trim()
+    body = body.slice('# Changelog'.length).trim()
   }
 
   const newContent = header + entry.trim() + '\n\n' + body
