@@ -438,10 +438,10 @@ const run = async () => {
     newVersion = semver(currentVersion, versionType)
   }
 
-  const releaseTagName = `v${newVersion}`
-  if (tagExists(releaseTagName)) {
+  const targetTagName = `v${newVersion}`
+  if (tagExists(targetTagName)) {
     p.log.error(
-      `Error: Git tag '${releaseTagName}' already exists. Please choose a different version.`,
+      `Error: Git tag '${targetTagName}' already exists. Please choose a different version.`,
     )
     p.outro('Release aborted.')
     process.exit(1)
